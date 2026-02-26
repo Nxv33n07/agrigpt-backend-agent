@@ -4,7 +4,10 @@ langchain>=1.2.10
 langchain-core>=1.2.13
 langsmith>=0.7.3
 
-# Google Gemini integration
+# OpenAI integration
+langchain-openai>=0.1.0
+
+# Gemini Fallback integration
 langchain-google-genai>=4.1.3
 
 # HTTP client

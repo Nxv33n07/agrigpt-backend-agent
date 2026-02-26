@@ -26,6 +26,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from langchain_core.tools import StructuredTool
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from pymongo import MongoClient, ASCENDING
@@ -280,12 +281,24 @@ def build_agent():
 
         dynamic_tools.append(create_tool(tool_name, description, input_schema))
 
-    llm            = ChatGoogleGenerativeAI(
+    llm_primary = ChatOpenAI(
+        model="gpt-oss:20b",
+        temperature=0,
+        base_url="http://3.109.63.164:11434/v1",
+        api_key="dummy",
+        max_retries=1,
+        timeout=10.0
+    )
+    llm_fallback = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash-lite",
         temperature=0,
-        google_api_key=GOOGLE_API_KEY
+        google_api_key=GOOGLE_API_KEY,
+        max_retries=1,
+        timeout=10.0
     )
-    llm_with_tools = llm.bind_tools(dynamic_tools)
+    llm_primary_with_tools = llm_primary.bind_tools(dynamic_tools)
+    llm_fallback_with_tools = llm_fallback.bind_tools(dynamic_tools)
+    llm_with_tools = llm_primary_with_tools.with_fallbacks([llm_fallback_with_tools])
 
     def agent_node(state: State):
         return {"messages": [llm_with_tools.invoke(state["messages"])]}
