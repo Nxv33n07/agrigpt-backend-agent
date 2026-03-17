@@ -5,12 +5,7 @@ on:
     types: [opened, synchronize]
     paths:
       - "app.py"
-      - "**.py"
-    paths-ignore:
-      - "tests/**"
-      - ".github/**"
-      - "CLAUDE.md"
-      - "setup-hooks.sh"
+      - "*.py"
 
 permissions:
   contents: write
