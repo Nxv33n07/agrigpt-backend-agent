@@ -4,109 +4,119 @@
 
 FastAPI + LangGraph agent serving an agricultural chatbot.
 
+- **Language**: Python
 - **Entry point**: `app.py`
-- **Deploy**: EC2 via SSH (`.github/workflows/deploy.yml`)
+- **Framework**: FastAPI
 - **LLM**: Google Gemini 2.5 Flash via LangChain
 - **Tools**: Discovered dynamically from MCP servers (Alumnx, Vignan)
 - **Memory**: MongoDB (`agrigpt.chats` collection)
+- **Deploy**: EC2 via SSH
 
-## Architecture
+## How CI/CD Works
 
 ```
-Local development
-  ├── /qa  (Claude Code skill)  → generates/updates tests, runs them, fixes failures
-  └── pre-push hook             → blocks git push if tests fail
+Developer writes code
+  └── /qa (skill)         → Claude writes/updates tests → runs them → fixes failures
+
+git push
+  └── pre-push hook       → runs tests locally → blocks push if failing
 
 PR opened
-  ├── claude-review.yml         → Claude reviews code, posts comment, approves/requests changes
-  └── claude-test-gen.yml       → Claude generates tests from rules below, then runs them
+  ├── claude-review.yml   → Claude reviews code → posts findings as PR comment
+  └── claude-test-gen.yml → Claude writes/updates tests → runs them → fixes failures → commits back
 
 Merge to main
-  ├── run-tests.yml             → Runs pytest automatically (merge gate)
-  └── deploy.yml                → SSH into EC2, git pull, pip install, restart service
+  └── deploy.yml          → SSH into EC2 → git pull → restart service
 ```
-
-## CI/CD Workflows
-
-| Workflow              | Trigger               | What happens                                                        |
-| --------------------- | --------------------- | ------------------------------------------------------------------- |
-| `claude-review.yml`   | PR opened/updated     | Claude reviews, comments, auto-enables merge if approved            |
-| `claude-test-gen.yml` | PR with `.py` changes | Claude generates tests per rules below → runs them → fixes failures |
-| `run-tests.yml`       | Every push / every PR | Runs `pytest tests/` — must pass before merge                       |
-| `deploy.yml`          | Push to `main`        | SSH deploy to EC2                                                   |
 
 ## Required GitHub Secrets
 
-| Secret         | Purpose                         |
-| -------------- | ------------------------------- |
-| `GITHUB_TOKEN` | Auto-provided by GitHub Actions |
-| `EC2_HOST`     | EC2 instance IP                 |
-| `EC2_USER`     | SSH username (ubuntu)           |
-| `EC2_SSH_KEY`  | Contents of `.pem` file         |
+| Secret                    | Purpose                                          |
+| ------------------------- | ------------------------------------------------ |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Claude GitHub App auth (auto-set by App install) |
+| `GITHUB_TOKEN`            | Auto-provided by GitHub Actions                  |
+| `EC2_HOST`                | EC2 instance IP                                  |
+| `EC2_USER`                | SSH username                                     |
+| `EC2_SSH_KEY`             | Contents of `.pem` file                          |
 
-> Claude auth is handled by the installed GitHub App — no `ANTHROPIC_API_KEY` needed.
+## Onboarding (run once after cloning)
+
+```bash
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+sh setup-hooks.sh
+```
 
 ---
 
 ## Code Review Rules
 
-When Claude reviews a PR, enforce all of these:
+When Claude reviews a PR, check for all of these:
 
-1. **No secrets in code** — all config via `os.getenv()` + `.env`
-2. **`global_tool_results` must be cleared** at the start of every `/test/chat` call (thread safety)
-3. **MCP client failures must be caught** — server down must not crash the app
-4. **`/webhook` must not block** — long work goes in `BackgroundTasks`
-5. **MongoDB operations** must handle connection errors
-6. **All request/response bodies** use Pydantic models
-7. **No hardcoded URLs** — MCP URLs from env vars only
-8. **No bare `except`** — always catch specific exception types
+1. No secrets or credentials hardcoded — all config via environment variables
+2. No bare `except:` — always catch specific exception types
+3. All FastAPI request/response bodies use Pydantic models
+4. Async endpoints must not block — offload long work to `BackgroundTasks`
+5. External service failures (MCP, MongoDB, LLM) must be caught and handled gracefully
+6. No hardcoded URLs — all service URLs from environment variables
+7. `global_tool_results` cleared at the start of every `/test/chat` request
 
 ---
 
 ## Test Strategy
 
-> This section is the single source of truth for how Claude generates tests.
-> The `claude-test-gen.yml` workflow tells Claude to read and follow these rules exactly.
-> Do not add test logic to the workflow yaml — add it here.
+> This is the single source of truth for how Claude writes tests.
+> All test rules live here. Workflow files and the /qa skill read this section — they contain no test logic of their own.
+> When the codebase changes, Claude updates this section automatically before writing tests.
 
-### What to generate
+### Step 1 — Detect the project
 
-Always generate or update `tests/test_app.py`. Always create `tests/__init__.py` (empty).
+Before writing tests, Claude must:
 
-Analyse the current state of `app.py` to determine what functions and endpoints exist.
-For every function and endpoint, generate tests covering:
+1. Read all source files to understand what the project does
+2. Identify the language (Python, TypeScript, Go, Java, etc.)
+3. Identify the framework (FastAPI, Express, Spring, etc.)
+4. Identify all functions, classes, endpoints, and modules that need testing
+5. Check what test files already exist and what is already covered
 
-- **Happy path** — expected inputs produce expected outputs
-- **Edge cases** — empty strings, `None`, missing optional fields, zero-length lists
-- **Error path** — dependencies fail (MongoDB down, MCP server unreachable, LLM error)
+### Step 2 — Choose the right test framework
 
-### Mocking rules
+| Language      | Framework      | Test runner command           |
+| ------------- | -------------- | ----------------------------- |
+| Python        | pytest         | `pytest tests/ -v --tb=short` |
+| TypeScript/JS | Jest or Vitest | `npx jest` or `npx vitest`    |
+| Go            | testing        | `go test ./...`               |
+| Java          | JUnit          | `mvn test`                    |
 
-Never call real external services in tests. Always mock:
+For this project: **Python + pytest**
 
-| Dependency                            | How to mock                                         |
-| ------------------------------------- | --------------------------------------------------- |
-| MongoDB (`chat_sessions`)             | `unittest.mock.patch("app.chat_sessions")`          |
-| MCP HTTP calls (`httpx.Client`)       | `unittest.mock.patch("app.httpx.Client")`           |
-| Gemini LLM (`ChatGoogleGenerativeAI`) | `unittest.mock.patch("app.ChatGoogleGenerativeAI")` |
-| `app_agent.invoke` (LangGraph)        | `unittest.mock.patch("app.app_agent")`              |
+Required packages: `pytest pytest-asyncio httpx pytest-mock`
 
-Use `pytest-mock` (`mocker` fixture) or `unittest.mock.patch` as decorator/context manager.
-Never import or use real env vars — patch `os.getenv` or set `monkeypatch.setenv`.
+### Step 3 — What to test
 
-### Test framework
+For every function and endpoint that exists in the codebase, generate tests covering:
 
-```
-pytest
-pytest-asyncio       # for async endpoints
-httpx                # AsyncClient for FastAPI testing
-pytest-mock          # mocker fixture
-```
+- **Happy path** — valid inputs produce correct outputs
+- **Edge cases** — empty strings, `None`, missing optional fields, zero-length lists, boundary values
+- **Error path** — dependencies fail (database down, external API unreachable, invalid input)
 
-Use `httpx.AsyncClient(app=app, base_url="http://test")` for endpoint tests.
-Mark async tests with `@pytest.mark.asyncio`.
+### Step 4 — Mocking rules
 
-### Fixtures to always define
+Never call real external services in tests. For this project:
+
+| Dependency      | Mock target                                         |
+| --------------- | --------------------------------------------------- |
+| MongoDB         | `unittest.mock.patch("app.chat_sessions")`          |
+| MCP HTTP calls  | `unittest.mock.patch("app.httpx.Client")`           |
+| Gemini LLM      | `unittest.mock.patch("app.ChatGoogleGenerativeAI")` |
+| LangGraph agent | `unittest.mock.patch("app.app_agent")`              |
+
+Use `pytest-mock` (`mocker` fixture) or `unittest.mock.patch`.
+Never use real environment variables — use `monkeypatch.setenv` or patch `os.getenv`.
+
+### Step 5 — Standard fixtures
+
+Always define these fixtures in `tests/test_app.py`:
 
 ```python
 @pytest.fixture
@@ -116,74 +126,69 @@ def chat_id():
 @pytest.fixture
 def phone():
     return "919999999999"
-
-@pytest.fixture
-def mock_ai_message():
-    from langchain_core.messages import AIMessage
-    return AIMessage(content="Test agricultural answer")
 ```
 
-### Specific test cases required for this project
+### Step 6 — Specific test cases for this project
+
+> Claude updates this section whenever `app.py` changes — adding entries for new functions/endpoints, removing entries for deleted ones.
 
 **`load_history`**
 
-- Returns `[]` when `chat_id` not found in MongoDB
-- Reconstructs `HumanMessage`, `AIMessage`, `SystemMessage` from stored dicts
+- Returns `[]` when `chat_id` not in MongoDB
+- Correctly reconstructs `HumanMessage`, `AIMessage`, `SystemMessage`
 - Ignores unknown roles silently
 
-**`save_history` — sliding window**
+**`save_history`**
 
-- Stores all messages when count ≤ `MAX_MESSAGES` (20)
-- Trims to last N human/AI pairs when count > `MAX_MESSAGES`
-- Upserts (creates doc on first save, updates on subsequent)
-- Sets `phone_number` only when provided
+- Stores all messages when count ≤ 20
+- Trims to last N human/AI pairs when count > 20
+- Upserts correctly (creates on first call, updates on subsequent)
+- Only sets `phone_number` when provided
 
 **`extract_sources_from_tool_results`**
 
 - Extracts `filename` from `sources[].filename` dict format
-- Extracts plain strings from `sources[]` list format
+- Extracts plain string from `sources[]` list format
 - Extracts `source` field from `results[].source` format
-- Extracts `source` / `document` / `filename` from list-of-dicts format (VignanUniversity style)
-- Returns `[]` when tool_results is empty
-- Falls back to tool name when list result has no source field
+- Extracts `source`/`document`/`filename` from list-of-dicts (VignanUniversity style)
+- Returns `[]` for empty input
+- Falls back to tool name when no source field found
 
 **`has_meaningful_tool_results`**
 
-- Returns `True` for non-empty list results
+- Returns `True` for non-empty list result
 - Returns `True` when `sources` list is non-empty
-- Returns `True` when `information` string is > 50 chars
-- Returns `False` for error status results
+- Returns `True` when `information` string > 50 chars
+- Returns `False` for error status
 - Returns `False` for empty list
 
-**`/webhook GET`** — verify token handshake
+**`/webhook GET`**
 
-- Returns `hub.challenge` when mode=subscribe and token matches
+- Returns `hub.challenge` when token matches
 - Returns 403 when token mismatches
 
-**`/webhook POST`** — message parsing
+**`/webhook POST`**
 
-- Returns `{"status": "ok"}` for non-text message types
-- Returns `{"status": "ok"}` when messages array is empty
+- Returns `{"status": "ok"}` for non-text messages
+- Returns `{"status": "ok"}` for empty messages array
 - Parses phone number and body correctly for valid text message
 
 **`/test/chat POST`**
 
-- Returns `ChatResponse` with sources when MCP tools return results
-- Uses Gemini fallback when `has_meaningful_tool_results` is False
+- Returns `ChatResponse` with sources when tools return results
+- Uses Gemini fallback when tools return no meaningful results
 - Clears `global_tool_results` at start of each request
 - Returns 500 on unhandled exception
 
-**`/hello GET`**
+**`/hello GET`** — returns `{"message": "Hello Claude!!"}`
 
-- Returns `{"message": "Hello Claude!!"}`
+**`/hi GET`** — returns `{"message": "Hi Claude"}`
 
-### Commit after generating
+### Step 7 — After writing tests
 
-After writing `tests/test_app.py` and `tests/__init__.py`, commit with:
-
-```
-git add tests/
-git commit -m "test: auto-generate tests via Claude [skip ci]"
+```bash
+git add CLAUDE.md tests/
+git commit -m "test: auto-generate/update tests via Claude [skip ci]"
 git push
 ```
 
@@ -191,34 +196,7 @@ git push
 
 ## Development Conventions
 
-- Match existing code style exactly
-- `global_tool_results` is a module-level list, cleared per request (single uvicorn worker)
-- Tool names prefixed with server name on collision (e.g., `vignan_search`)
-- System prompt injected fresh each request, stripped from history before MongoDB save
-- Commit prefix convention: `feat:`, `fix:`, `test:`, `chore:`
-
-## Onboarding (run once after cloning)
-
-```bash
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-pip install pytest pytest-asyncio httpx pytest-mock
-sh setup-hooks.sh        # activates pre-push hook — tests run before every git push
-```
-
-## QA Skill — /qa
-
-Type `/qa` in Claude Code at any time to:
-
-- Generate or update `tests/test_app.py` for the current state of the code
-- Run the tests automatically
-- Fix any failures
-
-**When to use it:** after writing new functions or endpoints, before opening a PR.
-The pre-push hook will also block your push if tests are failing.
-
-## Running Tests Manually
-
-```bash
-pytest tests/ -v
-```
+- Match existing code style exactly — no reformatting
+- Commit prefix: `feat:` `fix:` `test:` `chore:`
+- `global_tool_results` is module-level, cleared per request
+- System prompt injected fresh each request, stripped before MongoDB save

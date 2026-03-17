@@ -1,39 +1,34 @@
-Analyze all Python files in this project to understand the current code.
+You are the QA engineer for this project. Follow these steps exactly:
 
-Then do these two things in order:
+**Step 1 — Read the rules**
+Read `CLAUDE.md` fully. The "Test Strategy" section is your complete guide. Do not deviate from it.
 
----
+**Step 2 — Understand the current code**
+Read all source files. Identify every function, class, and endpoint that exists right now.
 
-## Part 1 — Update CLAUDE.md
+**Step 3 — Sync CLAUDE.md**
+Compare "Step 6 — Specific test cases" in CLAUDE.md against the current code:
 
-Read `app.py` and read the current `CLAUDE.md`.
+- Add entries for anything new that has no test coverage documented
+- Remove entries for anything that no longer exists
+- Update entries where the code has changed
+  Only edit the "Specific test cases" section. Leave everything else untouched.
 
-Compare the "Specific test cases required" section in CLAUDE.md against every function and endpoint that exists in `app.py` right now.
+**Step 4 — Write or update tests**
+Following the full Test Strategy in CLAUDE.md, write or update the test files.
 
-- If a function or endpoint exists in `app.py` but has no entry in CLAUDE.md → add it with the correct test cases to cover
-- If a function or endpoint was removed from `app.py` but still has an entry in CLAUDE.md → remove that entry
-- If a function or endpoint exists in both but the CLAUDE.md entry is outdated (e.g. parameters changed) → update it
-- Do not change anything else in CLAUDE.md — only the "Specific test cases required" section
+- Never remove a passing test
+- Never call real external services — mock everything per the mocking rules in CLAUDE.md
+- Cover happy path, edge cases, and error paths for every function/endpoint
 
----
+**Step 5 — Run tests**
+Run the test command for this project's language (see Test Strategy → Step 2 in CLAUDE.md).
+If any tests fail, read the failure output, fix the test code, and run again.
+Repeat until all tests pass.
 
-## Part 2 — Generate and run tests
+**Step 6 — Report**
+Tell the user:
 
-Follow the updated **Test Strategy** section in `CLAUDE.md` exactly to generate or update `tests/test_app.py`.
-
-Steps:
-
-1. Read the updated `CLAUDE.md` — use the Test Strategy section as the single source of truth
-2. Read `app.py` — identify every function and endpoint that exists right now
-3. Compare with `tests/test_app.py` if it exists — find anything missing or outdated
-4. Write or update `tests/test_app.py` so every function and endpoint is covered
-5. Also create `tests/__init__.py` if it does not exist (empty file)
-6. Run the tests: `pytest tests/ -v --tb=short`
-7. If any tests fail, read the failure output, fix `tests/test_app.py`, and run again
-8. Report: what was added/updated in CLAUDE.md, how many tests were added/updated, how many pass
-
-Rules:
-
-- Never remove existing passing tests
-- Never call real external services — mock everything as described in CLAUDE.md
-- Never ask the user what to test — decide based on what exists in the code
+- What was updated in CLAUDE.md
+- How many tests were added/updated
+- Final result: X passed, Y failed
