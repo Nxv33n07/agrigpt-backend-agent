@@ -30,11 +30,13 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          show_full_output: true
           prompt: |
             Read CLAUDE.md fully. Follow the Test Strategy section as your complete guide.
             Sync the "Specific test cases" section in CLAUDE.md with the current code.
-            Write or update tests to cover all functions and endpoints.
-            Run the tests. Fix any failures. Commit and push everything.
+            Write or update tests/test_app.py and tests/__init__.py to cover all functions and endpoints.
+            After writing, run: git add CLAUDE.md tests/ && git commit -m "test: auto-generate tests [skip ci]" && git push
+            Then run the tests: pytest tests/ -v --tb=short
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -57,10 +59,12 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          show_full_output: true
           prompt: |
             Tests are failing. Read test_output.txt and tests/test_app.py.
             Fix the test code so all tests pass. Follow the Test Strategy in CLAUDE.md.
-            Do not remove or weaken tests. Commit and push the fix.
+            Do not remove or weaken tests.
+            After fixing, run: git add tests/ && git commit -m "test: fix failing tests [skip ci]" && git push
 
       - name: Re-run after fix
         if: steps.run_tests.outcome == 'failure'
