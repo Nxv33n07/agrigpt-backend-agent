@@ -8,11 +8,34 @@ on:
 
 jobs:
   test:
-    name: Pytest
+    name: Generate Tests (if needed) → Run Tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # If tests/ doesn't exist, Claude generates them first
+      - name: Claude — Generate Tests (if missing or outdated)
+        uses: anthropic/claude-code-action@beta
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          direct_prompt: |
+            Read app.py and CLAUDE.md.
+
+            Check if tests/test_app.py exists and covers the current state of app.py.
+
+            If tests/test_app.py does not exist OR is missing coverage for any function or endpoint in app.py:
+            - Update the "Specific test cases required" section in CLAUDE.md to match current app.py
+            - Write or update tests/test_app.py following the Test Strategy in CLAUDE.md
+            - Create tests/__init__.py if it does not exist
+            - Commit and push: git add CLAUDE.md tests/ && git commit -m "test: auto-generate tests via Claude [skip ci]" && git push
+
+            If tests/test_app.py already exists and is fully up to date, do nothing.
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -22,10 +45,8 @@ jobs:
       - name: Install test dependencies
         run: pip install pytest pytest-asyncio httpx pytest-mock
 
+      - name: Pull latest (Claude may have just committed tests)
+        run: git pull
+
       - name: Run tests
-        run: |
-          if [ ! -d "tests" ]; then
-            echo "No tests/ directory yet — skipping. Open a PR to have Claude generate tests."
-            exit 0
-          fi
-          pytest tests/ -v --tb=short
+        run: pytest tests/ -v --tb=short
