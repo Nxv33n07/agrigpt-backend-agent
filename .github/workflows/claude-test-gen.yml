@@ -1,0 +1,64 @@
+name: Claude Test Generation & Auto-Run
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - "**.py"
+
+jobs:
+  generate-and-run:
+    name: Generate Tests → Run Tests → Fix Failures
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Step 1: Claude reads CLAUDE.md and generates tests
+      - name: Claude — Generate Tests (from CLAUDE.md rules)
+        uses: anthropic/claude-code-action@beta
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          direct_prompt: |
+            Read CLAUDE.md in this repository.
+            Follow the "Test Strategy" section exactly to generate tests for the current state of app.py.
+            Write tests/test_app.py and tests/__init__.py, then commit and push them.
+
+      # Step 2: Install deps and run the generated tests
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install pytest pytest-asyncio httpx pytest-mock
+
+      - name: Run generated tests
+        id: run_tests
+        run: pytest tests/ -v --tb=short 2>&1 | tee test_output.txt
+        continue-on-error: true
+
+      # Step 3: If tests failed, Claude reads the output and fixes them
+      - name: Claude — Fix Failing Tests
+        if: steps.run_tests.outcome == 'failure'
+        uses: anthropic/claude-code-action@beta
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          direct_prompt: |
+            The pytest run failed. The output is in test_output.txt.
+            Read test_output.txt and tests/test_app.py.
+            Fix tests/test_app.py so all tests pass, following the Test Strategy rules in CLAUDE.md.
+            Do not weaken or remove tests — fix the implementation of the test code.
+            After fixing, commit and push with: git add tests/ && git commit -m "test: fix failing tests via Claude [skip ci]" && git push
+
+      # Step 4: Re-run tests after fix to confirm they pass
+      - name: Re-run tests after fix
+        if: steps.run_tests.outcome == 'failure'
+        run: pytest tests/ -v --tb=short
