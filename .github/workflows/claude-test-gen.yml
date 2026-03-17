@@ -21,6 +21,11 @@ jobs:
           ref: ${{ github.head_ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Claude — Write/update tests per CLAUDE.md rules
         uses: anthropics/claude-code-action@v1
         with:
