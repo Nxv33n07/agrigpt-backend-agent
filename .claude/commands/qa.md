@@ -1,34 +1,13 @@
-You are the QA engineer for this project. Follow these steps exactly:
+Run: git diff --name-only HEAD
 
-**Step 1 — Read the rules**
-Read `CLAUDE.md` fully. The "Test Strategy" section is your complete guide. Do not deviate from it.
+Only read the files that changed. Do not read unchanged files.
 
-**Step 2 — Understand the current code**
-Read all source files. Identify every function, class, and endpoint that exists right now.
+Then follow these steps:
 
-**Step 3 — Sync CLAUDE.md**
-Compare "Step 6 — Specific test cases" in CLAUDE.md against the current code:
-
-- Add entries for anything new that has no test coverage documented
-- Remove entries for anything that no longer exists
-- Update entries where the code has changed
-  Only edit the "Specific test cases" section. Leave everything else untouched.
-
-**Step 4 — Write or update tests**
-Following the full Test Strategy in CLAUDE.md, write or update the test files.
-
-- Never remove a passing test
-- Never call real external services — mock everything per the mocking rules in CLAUDE.md
-- Cover happy path, edge cases, and error paths for every function/endpoint
-
-**Step 5 — Run tests**
-Run the test command for this project's language (see Test Strategy → Step 2 in CLAUDE.md).
-If any tests fail, read the failure output, fix the test code, and run again.
-Repeat until all tests pass.
-
-**Step 6 — Report**
-Tell the user:
-
-- What was updated in CLAUDE.md
-- How many tests were added/updated
-- Final result: X passed, Y failed
+1. Read CLAUDE.md — only the "Test Strategy" section
+2. For each changed file, identify only the functions/endpoints that were added or modified
+3. Update only the relevant entries in "Step 6 — Specific test cases" in CLAUDE.md (add/update/remove entries for what changed — nothing else)
+4. In tests/test_app.py, add or update only the tests for the changed functions/endpoints — do not rewrite the whole file
+5. Run: pytest tests/ -v --tb=short
+6. If failures, fix only the failing tests and run again
+7. Report: which functions were tested, how many tests added/updated, pass/fail count
