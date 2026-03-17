@@ -5,12 +5,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - "app.py"
-      - "**.py"
-    paths-ignore:
-      - "tests/**"
-      - ".github/**"
-      - "CLAUDE.md"
-      - "setup-hooks.sh"
+      - "*.py"
   issue_comment:
     types: [created]
 
