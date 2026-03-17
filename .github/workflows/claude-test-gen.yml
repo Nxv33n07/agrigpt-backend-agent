@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   generate-and-run:
-    name: Write Tests → Run → Fix
+    name: Write Tests → Commit → Run → Fix
     runs-on: ubuntu-latest
 
     steps:
@@ -26,17 +26,27 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Claude — Write/update tests per CLAUDE.md rules
+      # Claude writes files only — workflow handles git
+      - name: Claude — Write tests
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          show_full_output: true
           prompt: |
-            Read CLAUDE.md fully. Follow the Test Strategy section as your complete guide.
-            Sync the "Specific test cases" section in CLAUDE.md with the current code.
-            Write or update tests/test_app.py and tests/__init__.py to cover all functions and endpoints.
-            After writing, run: git add CLAUDE.md tests/ && git commit -m "test: auto-generate tests [skip ci]" && git push
-            Then run the tests: pytest tests/ -v --tb=short
+            Read CLAUDE.md. Follow the Test Strategy section.
+            Update the "Specific test cases" section in CLAUDE.md for any code changes.
+            Write or update tests/test_app.py and create tests/__init__.py if missing.
+            Do NOT run git commands. Just write the files.
+
+      # Workflow commits whatever Claude wrote
+      - name: Commit tests if changed
+        run: |
+          git add CLAUDE.md tests/ 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "test: auto-generate tests via Claude [skip ci]"
+            git push origin ${{ github.head_ref }}
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -46,28 +56,38 @@ jobs:
       - name: Install test dependencies
         run: pip install pytest pytest-asyncio httpx pytest-mock
 
-      - name: Pull latest commits
-        run: git pull
-
       - name: Run tests
         id: run_tests
-        run: pytest tests/ -v --tb=short 2>&1 | tee test_output.txt
+        run: |
+          if [ ! -d "tests" ]; then
+            echo "No tests directory found after generation"
+            exit 1
+          fi
+          pytest tests/ -v --tb=short 2>&1 | tee test_output.txt
         continue-on-error: true
 
+      # Claude fixes failures — workflow commits the fix
       - name: Claude — Fix failing tests
         if: steps.run_tests.outcome == 'failure'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          show_full_output: true
           prompt: |
             Tests are failing. Read test_output.txt and tests/test_app.py.
-            Fix the test code so all tests pass. Follow the Test Strategy in CLAUDE.md.
-            Do not remove or weaken tests.
-            After fixing, run: git add tests/ && git commit -m "test: fix failing tests [skip ci]" && git push
+            Fix tests/test_app.py so all tests pass. Follow Test Strategy in CLAUDE.md.
+            Do NOT run git commands. Just fix the file.
 
-      - name: Re-run after fix
+      - name: Commit fix if changed
         if: steps.run_tests.outcome == 'failure'
         run: |
-          git pull
-          pytest tests/ -v --tb=short
+          git add tests/ 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "test: fix failing tests via Claude [skip ci]"
+            git push origin ${{ github.head_ref }}
+          fi
+
+      - name: Re-run tests after fix
+        if: steps.run_tests.outcome == 'failure'
+        run: pytest tests/ -v --tb=short
