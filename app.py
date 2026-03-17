@@ -92,11 +92,14 @@ mongo_client   = MongoClient(MONGODB_URI)
 db             = mongo_client[MONGODB_DB]
 chat_sessions: Collection = db[MONGODB_COLLECTION]
 
-chat_sessions.create_index([("chat_id",      ASCENDING)], unique=True)
-chat_sessions.create_index([("phone_number", ASCENDING)])
-chat_sessions.create_index([("updated_at",   ASCENDING)])
-
-print(f"Connected to MongoDB: {MONGODB_DB}.{MONGODB_COLLECTION}")
+try:
+    chat_sessions.create_index([("chat_id",      ASCENDING)], unique=True)
+    chat_sessions.create_index([("phone_number", ASCENDING)])
+    chat_sessions.create_index([("updated_at",   ASCENDING)])
+    print(f"✅ Connected to MongoDB: {MONGODB_DB}.{MONGODB_COLLECTION}")
+except Exception as e:
+    print(f"⚠️ WARNING: Could not connect to MongoDB or create indexes: {e}")
+    print("   Running in limited mode (chat history will not be persisted)")
 
 # ============================================================
 # MongoDB Memory Helpers
@@ -766,6 +769,12 @@ async def hi():
     return {"message": "Hi Claude !!"}
 
 
+@app.get("/hi2", summary="Say Hi2", tags=["Health"])
+async def hi2():
+    """Returns a greeting from Claude."""
+    return {"message": "Hii Claude!!!"}
+
+
 # ============================================================
 # Chat Endpoint Models
 # ============================================================
@@ -898,3 +907,4 @@ def chat(request: ChatRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8030)
+ 
