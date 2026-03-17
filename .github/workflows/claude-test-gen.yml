@@ -3,6 +3,14 @@ name: Claude Test Generation & Auto-Run
 on:
   pull_request:
     types: [opened, synchronize]
+    paths:
+      - "app.py"
+      - "**.py"
+    paths-ignore:
+      - "tests/**"
+      - ".github/**"
+      - "CLAUDE.md"
+      - "setup-hooks.sh"
 
 permissions:
   contents: write

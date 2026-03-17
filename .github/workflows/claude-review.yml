@@ -3,6 +3,14 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    paths:
+      - "app.py"
+      - "**.py"
+    paths-ignore:
+      - "tests/**"
+      - ".github/**"
+      - "CLAUDE.md"
+      - "setup-hooks.sh"
   issue_comment:
     types: [created]
 
